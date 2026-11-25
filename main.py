@@ -25,14 +25,31 @@ MAX_CHARS = 32
 
 
 def _validate_entry(text: str) -> None:
-    """Gate check matching the kit: UTF-8 text, 1-32 chars, not only whitespace."""
+    """Gate check matching the kit: UTF-8 text, 1-32 chars, not only whitespace.
+
+    Also rejects control characters (newlines, tabs, NUL, ...) — the gate
+    file must be one clean line — and caps the UTF-8 byte length at 32 so
+    the file is exactly the story, byte for byte.
+    """
     if not isinstance(text, str):
         raise ValueError("entry is not text")
     if not (1 <= len(text) <= MAX_CHARS):
         raise ValueError(f"entry is {len(text)} chars, must be 1-{MAX_CHARS}")
     if not text.strip():
         raise ValueError("entry is only whitespace")
-    text.encode("utf-8")  # must be valid UTF-8
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in text):
+        raise ValueError("entry contains a control character")
+    if len(text.encode("utf-8")) > MAX_CHARS:
+        raise ValueError("entry exceeds 32 UTF-8 bytes")
+
+
+def _resolve_output_dir() -> str | None:
+    """Return $MAKEFUN_OUTPUT_DIR, or None (with a warning) when unset."""
+    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR")
+    if not out_dir:
+        print("MAKEFUN_OUTPUT_DIR not set; nothing to write", file=sys.stderr)
+        return None
+    return out_dir
 
 
 def main() -> int:
@@ -42,9 +59,8 @@ def main() -> int:
         print(f"gate failed: {exc}", file=sys.stderr)
         return 0
 
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR")
-    if not out_dir:
-        print("MAKEFUN_OUTPUT_DIR not set; nothing to write", file=sys.stderr)
+    out_dir = _resolve_output_dir()
+    if out_dir is None:
         return 0
 
     try:
